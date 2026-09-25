@@ -64,10 +64,10 @@ function fromRoot(value) {
 
 const dryRun = boolean('DRY_RUN', true);
 const useLocalAI = boolean('USE_LOCAL_AI', false);
-const minScriptSeconds = number('MIN_SCRIPT_SECONDS', 45, { min: 10, max: 180 });
-const maxScriptSeconds = number('MAX_SCRIPT_SECONDS', 60, { min: 10, max: 180 });
-const minScriptWords = integer('SCRIPT_MIN_WORDS', 120, { min: 20, max: 500 });
-const maxScriptWords = integer('SCRIPT_MAX_WORDS', 140, { min: 20, max: 500 });
+const minScriptSeconds = number('MIN_SCRIPT_SECONDS', 45, { min: 10, max: 700 });
+const maxScriptSeconds = number('MAX_SCRIPT_SECONDS', 60, { min: 10, max: 700 });
+const minScriptWords = integer('SCRIPT_MIN_WORDS', 120, { min: 20, max: 2000 });
+const maxScriptWords = integer('SCRIPT_MAX_WORDS', 140, { min: 20, max: 2000 });
 
 const cronSchedule = optional('CRON_SCHEDULE', '0 10 * * *');
 const cronTimezone = optional('CRON_TIMEZONE', 'UTC');
