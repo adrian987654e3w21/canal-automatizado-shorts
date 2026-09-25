@@ -46,6 +46,7 @@ function systemPrompt() {
     `La locucion debe tener entre ${openai.script.minWords} y ${openai.script.maxWords} palabras para durar aproximadamente ${openai.script.minSeconds}-${openai.script.maxSeconds} segundos.`,
     'Estructura: gancho claro en las primeras 5 palabras, una idea central, desarrollo con ritmo, giro o contexto y cierre interactivo mediante una pregunta directa.',
     'El titulo y la descripcion deben ser precisos, atractivos y compatibles con las reglas del canal.',
+    'Responde unicamente en formato JSON valido.',
   ].join('\n');
 }
 
