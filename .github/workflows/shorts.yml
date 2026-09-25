@@ -18,30 +18,28 @@ permissions:
   id-token: write
 
 env:
-  # === CONFIGURACIÓN CANAL (cambia aquí o usa secrets) ===
+  # === CONFIGURACIÓN CANAL ===
   CONTENT_NICHE: curiosidades del espacio
   CONTENT_LANGUAGE: es-ES
   TARGET_AUDIENCE: adultos curiosos de 18 a 34 años
   TONE: curioso, claro, energético y creíble
   CONTENT_GUARDRAILS: No inventes cifras, citas ni hechos; evita engaños y clickbait. No incluyas acotaciones, emojis, URLs ni hashtags dentro del guion.
-  
-  # === GUION ===
-  SCRIPT_MIN_WORDS: 40
-  SCRIPT_MAX_WORDS: 110
-  MIN_SCRIPT_SECONDS: 10
-  MAX_SCRIPT_SECONDS: 60
 
-  # === MODO LOCAL GRATIS (Ollama + Piper) ===
-  USE_LOCAL_AI: true
-  OLLAMA_MODEL: llama3.1:8b
-  OLLAMA_TEMPERATURE: 0.7
-  OLLAMA_MAX_TOKENS: 2500
-  PIPER_MODEL: /home/runner/voices/es_ES-sharvard-medium.onnx
-  PIPER_LENGTH_SCALE: 1.0
-  PIPER_NOISE_SCALE: 0.667
-  PIPER_NOISE_W: 0.8
-  PIPER_SAMPLE_RATE: 22050
-  
+  # === GUION (OpenAI GPT-4o-mini) ===
+  USE_LOCAL_AI: false
+  OPENAI_MODEL: gpt-4o-mini
+  SCRIPT_MIN_WORDS: 120
+  SCRIPT_MAX_WORDS: 160
+  MIN_SCRIPT_SECONDS: 45
+  MAX_SCRIPT_SECONDS: 65
+
+  # === VOZ (ElevenLabs neural) ===
+  ELEVENLABS_MODEL_ID: eleven_multilingual_v2
+  ELEVENLABS_STABILITY: 0.5
+  ELEVENLABS_SIMILARITY_BOOST: 0.85
+  ELEVENLABS_STYLE: 0.2
+  ELEVENLABS_SPEED: 1.0
+
   # === VIDEO ===
   VIDEO_WIDTH: 1080
   VIDEO_HEIGHT: 1920
@@ -55,12 +53,12 @@ env:
   SUBTITLE_FONT_SIZE: 52
   SUBTITLE_OUTLINE: 6
   SUBTITLE_MARGIN_V: 180
-  
-  # === YOUTUBE (se inyectan desde secrets) ===
+
+  # === YOUTUBE ===
   DRY_RUN: false
   YOUTUBE_PRIVACY: unlisted
   YOUTUBE_CATEGORY_ID: 27
-  YOUTUBE_DEFAULT_TAGS: shorts,curiosidades,espacio
+  YOUTUBE_DEFAULT_TAGS: shorts,curiosidades,espacio,ciencia,universo
   YOUTUBE_DESCRIPTION_FOOTER: Contenido generado con asistencia de inteligencia artificial.
   YOUTUBE_MADE_FOR_KIDS: false
   YOUTUBE_EMBEDDABLE: true
@@ -83,55 +81,13 @@ jobs:
           node-version: '22'
           cache: 'npm'
       
-      # 3. Instalar dependencias del sistema (ffmpeg, piper)
+      # 3. Instalar dependencias del sistema (solo ffmpeg — voz via ElevenLabs API)
       - name: 🔧 Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates libespeak-ng1
-          # Piper TTS - extraer binario + librerías compartidas
-          PIPER_VERSION="2023.11.14-2"
-          sudo mkdir -p /opt/piper
-          curl -fsSL "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
-            | sudo tar -xz -C /opt/piper --strip-components=1
-          sudo chmod +x /opt/piper/piper
-          sudo ln -sf /opt/piper/piper /usr/local/bin/piper
-          # Copiar librerías al path del sistema
-          sudo cp /opt/piper/*.so* /usr/local/lib/ 2>/dev/null || true
-          sudo ldconfig
-          piper --version || echo "Piper instalado en /opt/piper"
-      
-      # 4. Descargar modelo Piper (voz español) - cacheado
-      - name: 🎙️ Download Piper voice model
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/voices
-          key: piper-voice-es-${{ runner.os }}-v1
-          restore-keys: |
-            piper-voice-es-${{ runner.os }}-
-      - name: 📥 Ensure Piper model exists
-        if: steps.piper-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p /home/runner/voices
-          cd /home/runner/voices
-          curl -fL -o es_ES-sharvard-medium.onnx \
-            "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx"
-          curl -fL -o es_ES-sharvard-medium.onnx.json \
-            "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json"
-      
-      # 5. Instalar y arrancar Ollama
-      - name: 🦙 Setup Ollama
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve > /tmp/ollama.log 2>&1 &
-          # Esperar a que Ollama responda
-          for i in {1..30}; do
-            if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then break; fi
-            sleep 2
-          done
-          # Descargar modelo LLM
-          ollama pull ${{ env.OLLAMA_MODEL }}
-      
-      # 6. Generar fondo de video (cacheado)
+          sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates
+
+      # 4. Generar fondo de video (cacheado)
       - name: 🎨 Generate background video
         id: bg-cache
         uses: actions/cache@v4
@@ -142,7 +98,6 @@ jobs:
         if: steps.bg-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p /home/runner/backgrounds
-          # Fondo espacial animado: estrellas parpadeantes sobre fondo negro-azul profundo
           ffmpeg -y -f lavfi \
             -i "color=c=black:s=1080x1920:r=30" \
             -vf "
@@ -153,8 +108,8 @@ jobs:
             " \
             -t 60 -an -c:v libx264 -preset veryfast -crf 20 -movflags +faststart \
             /home/runner/backgrounds/default.mp4
-      
-      # 7. Instalar dependencias Node
+
+      # 5. Instalar dependencias Node
       - name: 📦 Install Node dependencies
         run: npm ci
       
@@ -172,14 +127,15 @@ jobs:
           MIN_SCRIPT_SECONDS=${{ env.MIN_SCRIPT_SECONDS }}
           MAX_SCRIPT_SECONDS=${{ env.MAX_SCRIPT_SECONDS }}
           USE_LOCAL_AI=${{ env.USE_LOCAL_AI }}
-          OLLAMA_MODEL=${{ env.OLLAMA_MODEL }}
-          OLLAMA_TEMPERATURE=${{ env.OLLAMA_TEMPERATURE }}
-          OLLAMA_MAX_TOKENS=${{ env.OLLAMA_MAX_TOKENS }}
-          PIPER_MODEL=${{ env.PIPER_MODEL }}
-          PIPER_LENGTH_SCALE=${{ env.PIPER_LENGTH_SCALE }}
-          PIPER_NOISE_SCALE=${{ env.PIPER_NOISE_SCALE }}
-          PIPER_NOISE_W=${{ env.PIPER_NOISE_W }}
-          PIPER_SAMPLE_RATE=${{ env.PIPER_SAMPLE_RATE }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL=${{ env.OPENAI_MODEL }}
+          ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID=${{ secrets.ELEVENLABS_VOICE_ID }}
+          ELEVENLABS_MODEL_ID=${{ env.ELEVENLABS_MODEL_ID }}
+          ELEVENLABS_STABILITY=${{ env.ELEVENLABS_STABILITY }}
+          ELEVENLABS_SIMILARITY_BOOST=${{ env.ELEVENLABS_SIMILARITY_BOOST }}
+          ELEVENLABS_STYLE=${{ env.ELEVENLABS_STYLE }}
+          ELEVENLABS_SPEED=${{ env.ELEVENLABS_SPEED }}
           VIDEO_WIDTH=${{ env.VIDEO_WIDTH }}
           VIDEO_HEIGHT=${{ env.VIDEO_HEIGHT }}
           VIDEO_FPS=${{ env.VIDEO_FPS }}
