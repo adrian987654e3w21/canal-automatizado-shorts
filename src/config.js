@@ -270,7 +270,7 @@ if (missing.length > 0) {
 
 if (!config.localAI.enabled) {
   // Validaciones solo para modo cloud
-  if (!config.openai.apiKey) missing.push('OPENAI_API_KEY');
+  if (!config.openai.apiKey && !config.groq.apiKey) missing.push('OPENAI_API_KEY o GROQ_API_KEY');
   if (!config.elevenlabs.apiKey) missing.push('ELEVENLABS_API_KEY');
   if (!config.elevenlabs.voiceId) missing.push('ELEVENLABS_VOICE_ID');
 } else {
