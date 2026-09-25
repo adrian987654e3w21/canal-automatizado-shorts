@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
@@ -17,13 +18,23 @@ if (!ffmpegBinary || !ffprobeBinary) {
 ffmpeg.setFfmpegPath(ffmpegBinary);
 ffmpeg.setFfprobePath(ffprobeBinary);
 
+/**
+ * Escapa una ruta para poder usarla como valor dentro de un filtergraph.
+ *
+ * Los espacios son el caso que mas duele: el proyecto puede vivir en "Canal
+ * Automatizado" y, sin escapar, ffmpeg parte el argumento por ahi y falla con
+ * un "Error opening output file" que no señala la causa real.
+ */
 function escapeFilterPath(value) {
   return value
     .replace(/\\/g, '/')
     .replace(/:/g, '\\:')
     .replace(/'/g, "\\'")
     .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]');
+    .replace(/\]/g, '\\]')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;')
+    .replace(/ /g, '\\ ');
 }
 
 export function probeMedia(inputFile) {
@@ -56,28 +67,15 @@ export async function renderShortVideo({ backgroundFile, audioFile, subtitleFile
   ]);
 
   const { width, height, fps, crf, preset } = config.media.video;
-  const subtitleStyle = config.media.subtitles;
 
-  // Subtítulos: amarillo brillante, contorno negro grueso, sombra — máxima legibilidad
-  const subtitleForceStyle = [
-    `FontName=${subtitleStyle.font}`,
-    `FontSize=${subtitleStyle.fontSize}`,
-    `PrimaryColour=&H0000FFFF`,
-    `OutlineColour=&H00000000`,
-    `BackColour=&H80000000`,
-    `BorderStyle=1`,
-    `Outline=${subtitleStyle.outline}`,
-    `Shadow=3`,
-    `Bold=1`,
-    `Italic=0`,
-    `Alignment=2`,
-    `MarginV=${subtitleStyle.marginV}`,
-  ].join(',');
-
+  // Los subtitulos llegan como ASS con el estilo ya embebido. No se usa force_style
+  // porque el filtro `subtitles` ignora Alignment sobre ese campo y ancla el texto
+  // arriba a la izquierda; con ASS el anclaje y el resaltado por palabra son correctos.
+  // No se pasa fontsdir: libass ya encuentra las fuentes del sistema (Arial, etc.).
   const filter = [
     `[0:v:0]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
       `crop=${width}:${height},setsar=1,format=yuv420p,` +
-      `subtitles=filename='${escapeFilterPath(subtitleFile)}':force_style='${subtitleForceStyle}'[v]`,
+      `subtitles=filename='${escapeFilterPath(subtitleFile)}'[v]`,
     '[1:a:0]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a]',
   ].join(';');
 

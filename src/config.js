@@ -71,7 +71,9 @@ const maxScriptWords = integer('SCRIPT_MAX_WORDS', 140, { min: 20, max: 2000 });
 
 const cronSchedule = optional('CRON_SCHEDULE', '0 10 * * *');
 const cronTimezone = optional('CRON_TIMEZONE', 'UTC');
-const backgroundFile = fromRoot(required('BACKGROUND_FILE'));
+const backgroundDir = fromRoot(optional('BACKGROUND_DIR', 'assets/backgrounds'));
+const explicitBackgrounds = list('BACKGROUND_FILES').map(fromRoot);
+const singleBackground = optional('BACKGROUND_FILE') ? fromRoot(optional('BACKGROUND_FILE')) : null;
 const outputDir = fromRoot(optional('OUTPUT_DIR', 'output'));
 
 const config = {
@@ -117,7 +119,11 @@ const config = {
     },
   },
   media: {
-    backgroundFile,
+    // Rotacion de fondos: si BACKGROUND_FILES esta vacio se escanea el directorio.
+    backgroundsDir: backgroundDir,
+    backgroundFiles: explicitBackgrounds,
+    backgroundFile: singleBackground,
+    rotateBackgrounds: boolean('BACKGROUND_ROTATION', true),
     outputDir,
     ffmpegPath: optional('FFMPEG_PATH') || null,
     ffprobePath: optional('FFPROBE_PATH') || null,
@@ -133,10 +139,49 @@ const config = {
       maxDurationSeconds: number('SUBTITLE_MAX_DURATION_SECONDS', 3.2, { min: 1, max: 8 }),
       maxWords: integer('SUBTITLE_MAX_WORDS', 8, { min: 2, max: 16 }),
       font: optional('SUBTITLE_FONT', 'Arial'),
-      fontSize: number('SUBTITLE_FONT_SIZE', 18, { min: 8, max: 120 }),
-      outline: number('SUBTITLE_OUTLINE', 4, { min: 0, max: 12 }),
-      marginV: integer('SUBTITLE_MARGIN_V', 220, { min: 0, max: 1000 }),
+      // El ASS declara PlayResX/PlayResY iguales al video, asi que el tamano es
+      // en pixeles reales: 84 px sobre 1080x1920 es el rango legible de Shorts.
+      fontSize: integer('SUBTITLE_FONT_SIZE', 84, { min: 8, max: 200 }),
+      color: optional('SUBTITLE_COLOR', '#FFFFFF'),
+      highlightColor: optional('SUBTITLE_HIGHLIGHT_COLOR', '#FFD400'),
+      outlineColor: optional('SUBTITLE_OUTLINE_COLOR', '#000000'),
+      outline: integer('SUBTITLE_OUTLINE', 5, { min: 0, max: 20 }),
+      shadow: integer('SUBTITLE_SHADOW', 2, { min: 0, max: 20 }),
+      bold: boolean('SUBTITLE_BOLD', true),
+      karaoke: boolean('SUBTITLE_KARAOKE', true),
+      // 1 = abajo centro, 2 = abajo izquierda, 5 = centro, 8 = arriba centro.
+      alignment: integer('SUBTITLE_ALIGNMENT', 2, { min: 1, max: 9 }),
+      marginL: integer('SUBTITLE_MARGIN_L', 90, { min: 0, max: 1000 }),
+      marginR: integer('SUBTITLE_MARGIN_R', 90, { min: 0, max: 1000 }),
+      marginV: integer('SUBTITLE_MARGIN_V', 300, { min: 0, max: 1000 }),
+      // Las fuentes se resuelven con las del sistema; no hay carpeta de fuentes
+      // propia configurable a proposito (rompia el filtergraph de ffmpeg).
     },
+  },
+  history: {
+    file: optional('HISTORY_FILE', 'history.json'),
+    maxEntries: integer('HISTORY_MAX_ENTRIES', 120, { min: 10, max: 5000 }),
+  },
+  tiktok: {
+    enabled: boolean('TIKTOK_ENABLED', false),
+    accessToken: optional('TIKTOK_ACCESS_TOKEN'),
+    privacyLevel: optional('TIKTOK_PRIVACY_LEVEL', 'SELF_ONLY'),
+    titleMaxLength: integer('TIKTOK_TITLE_MAX', 2200, { min: 100, max: 2200 }),
+    maxBytes: integer('TIKTOK_MAX_BYTES', 4_096_000_000, { min: 1_000_000 }),
+    timeoutMs: integer('TIKTOK_TIMEOUT_MS', 300_000, { min: 10_000 }),
+    descriptionFooter: optional('TIKTOK_DESCRIPTION_FOOTER'),
+  },
+  instagram: {
+    enabled: boolean('INSTAGRAM_ENABLED', false),
+    userId: optional('INSTAGRAM_USER_ID'),
+    accessToken: optional('INSTAGRAM_ACCESS_TOKEN'),
+    publicVideoBaseUrl: optional('IG_REELS_URL_BASE'),
+    slug: optional('IG_REELS_SLUG', 'short'),
+    graphVersion: optional('IG_GRAPH_VERSION', '21.0'),
+    captionMaxLength: integer('IG_CAPTION_MAX', 2200, { min: 100, max: 2200 }),
+    shareToFeed: boolean('IG_SHARE_TO_FEED', true),
+    timeoutMs: integer('IG_TIMEOUT_MS', 60_000, { min: 10_000 }),
+    descriptionFooter: optional('IG_DESCRIPTION_FOOTER'),
   },
   youtube: {
     clientId: optional('YOUTUBE_CLIENT_ID'),
@@ -190,8 +235,18 @@ try {
   throw new Error(`CRON_TIMEZONE no es una zona horaria valida: ${config.cron.timezone}`);
 }
 
-if (!existsSync(backgroundFile)) {
-  missing.push(`BACKGROUND_FILE (archivo no encontrado: ${backgroundFile})`);
+// Debe existir al menos un fondo: el archivo explicito o alguno en el directorio.
+// El contenido del directorio se comprueba en listBackgrounds() al ejecutar.
+const declaredBackgrounds = [
+  ...(singleBackground ? [singleBackground] : []),
+  ...explicitBackgrounds,
+];
+if (declaredBackgrounds.length > 0) {
+  for (const file of declaredBackgrounds) {
+    if (!existsSync(file)) missing.push(`BACKGROUND_FILES (archivo no encontrado: ${file})`);
+  }
+} else if (!existsSync(backgroundDir)) {
+  missing.push(`BACKGROUND_DIR (carpeta no encontrada: ${backgroundDir})`);
 }
 
 if (!dryRun) {
@@ -228,5 +283,12 @@ if (missing.length > 0) {
 // Shortcuts para retrocompatibilidad con los servicios (ollama.js, piper.js)
 config.ollama = config.localAI.ollama;
 config.piper = config.localAI.piper;
+
+// Opciones que se pasan tal cual al generador de ASS.
+config.media.assOptions = {
+  ...config.media.subtitles,
+  width: config.media.video.width,
+  height: config.media.video.height,
+};
 
 export default config;

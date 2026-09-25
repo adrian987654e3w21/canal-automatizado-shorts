@@ -4,18 +4,25 @@ Backend en Node.js para ejecutar todos los días este flujo:
 
 1. OpenAI genera un guion nuevo de 45-60 segundos, título, descripción y etiquetas mediante JSON Schema.
 2. ElevenLabs genera la voz en off MP3 y devuelve la alineación temporal de cada carácter.
-3. FFmpeg repite un fondo vertical, mezcla el audio y quema subtítulos SRT sincronizados.
-4. YouTube Data API v3 publica el MP4 como Short usando OAuth 2.0.
+3. FFmpeg repite un fondo vertical, mezcla el audio y quema subtítulos ASS sincronizados con resaltado por palabra.
+4. El mismo MP4 se publica en YouTube, TikTok e Instagram Reels.
 
 El diseño evita ejecuciones solapadas, conserva los artefactos de cada intento y valida que la locución no se salga de la duración permitida.
+
+## Antes de nada: el nicho decide cuánto entra
+
+El RPM de los Shorts no depende de la calidad del vídeo, depende de **quién compra los anuncios que se muestran al lado**. Finanzas, B2B, herramientas de software y seguros pagan bastante mas que el entretenimiento o las curiosidades, que son los nichos con menos ingresos. La diferencia entre nichos es de 5 a 20 veces, y los nichos de alto RPM son además los únicos que reciben patrocinios directos.
+
+El sistema no impone el nicho: se define en `CONTENT_NICHE`. Lo que sí hace es guardar todo en `output/history.json` e inyectar los temas ya publicados en el prompt, porque un canal que repite el mismo tema corre riesgo de desmonetización bajo la política de contenido repetitivo de YouTube.
 
 ## Requisitos
 
 - Node.js 22 o superior y npm.
 - **Modo cloud (por defecto):** API key de OpenAI + API key de ElevenLabs.
 - **Modo local gratis (opcional):** Ollama + modelo LLM + Piper TTS + modelo de voz `.onnx`.
-- Un video vertical sin derechos restringidos.
+- Varios vídeos verticales sin derechos restringidos en `assets/backgrounds/` (el sistema rota entre ellos).
 - Para publicar: un proyecto de Google Cloud con YouTube Data API v3 y credenciales OAuth 2.0.
+- Opcional: TikTok for Developers con la *Content Posting API* aprobada, y una cuenta de Instagram Business/Creator con una URL pública desde la que descargar el MP4.
 
 `ffmpeg-static` y `ffprobe-static` incluyen binarios para el sistema actual, por lo que normalmente no hace falta instalar FFmpeg manualmente.
 
@@ -28,23 +35,32 @@ El diseño evita ejecuciones solapadas, conserva los artefactos de cada intento 
 │   │   ├── default.mp4          # Fondo vertical con licencia
 │   │   └── README.md
 │   └── voices/                  # Modelos Piper .onnx + .onnx.json (modo local)
-├── output/                     # Un directorio por ejecucion
+├── output/                     # Un directorio por ejecucion + history.json
 ├── scripts/
 │   ├── create-demo-background.js
+│   ├── doctor.js
 │   └── get-youtube-token.js
 ├── src/
 │   ├── config.js
 │   ├── pipeline.js
 │   ├── services/
 │   │   ├── elevenlabs.js
+│   │   ├── instagram.js
 │   │   ├── ollama.js
 │   │   ├── openai.js
 │   │   ├── piper.js
+│   │   ├── publisher.js         # Reparte el MP4 entre las plataformas activas
+│   │   ├── tiktok.js
 │   │   ├── video.js
 │   │   └── youtube.js
 │   └── utils/
+│       ├── ass.js               # Subtitulos ASS con estilo y resaltado
+│       ├── backgrounds.js       # Descubrimiento y rotacion de clips
+│       ├── history.js           # Anti-repeticion
 │       └── subtitles.js
 ├── test/
+│   ├── ass.test.js
+│   ├── history.test.js
 │   ├── subtitles.test.js
 │   └── video.test.js
 ├── .env.example
@@ -163,7 +179,7 @@ Y ejecuta una vez de forma inmediata:
 npm run generate-now
 ```
 
-El flujo genera `content.json`, `voice.mp3`, `subtitles.srt`, `short.mp4` y `result.json` dentro de un nuevo directorio de `output/`. No llamará a YouTube.
+El flujo genera `content.json`, `voice.mp3`, `subtitles.srt`, `subtitles.ass`, `short.mp4` y `result.json` dentro de un nuevo directorio de `output/`. No llamará a YouTube.
 
 Prueba las utilidades sin gastar APIs:
 
@@ -294,15 +310,62 @@ output/20260925T140000-AbCd12/
 ├── content.json
 ├── voice.mp3
 ├── subtitles.srt
+├── subtitles.ass
 ├── short.mp4
 └── result.json
 ```
 
+`subtitles.srt` es la referencia legible; `subtitles.ass` es el que se quema en el video. El ASS lleva el estilo embebido y el resaltado palabra a palabra, y es necesario porque el filtro `subtitles` de FFmpeg ignora `Alignment` cuando se le pasa un SRT con `force_style`, dejando los subtitulos anclados arriba a la izquierda en lugar de abajo al centro.
+
 Si una etapa falla, se genera `error.json` con la etapa, el mensaje y los timestamps. Los archivos parciales no se borran para poder diagnosticar el problema.
+
+## Publicar en varias plataformas a la vez
+
+Un mismo MP4 en varias plataformas multiplica el alcance sin coste de producción: es la palanca de ingresos más grande que no depende del nicho. Las tres son opcionales e independientes, y cada una se activa por separado.
+
+| Plataforma | Variable | Requisito que no es negociable |
+| --- | --- | --- |
+| YouTube | `DRY_RUN=false` | Proyecto OAuth con la *YouTube Data API v3* habilitada. |
+| TikTok | `TIKTOK_ENABLED=true` | Aprobar la *Content Posting API* en TikTok for Developers. Sin aprobación, la API responde 403. |
+| Instagram | `INSTAGRAM_ENABLED=true` | Cuenta Business/Creator vinculada a una Fan Page **y** `IG_REELS_URL_BASE` servida por HTTP público, porque Instagram descarga el MP4 desde esa URL en lugar de leer tu disco. |
+
+Los fallos están aislados: si TikTok rechaza la subida, el Short sigue saliendo por YouTube e Instagram, y el resultado queda registrado en `result.json` con el detalle por plataforma. Así una caída de red a media ejecución no tira abajo el trabajo del día.
+
+## Monetización: lo que este sistema no hace
+
+Conviene decirlo claro, porque es donde suelen crear expectativas falsas:
+
+- El código genera y publica el contenido. **No genera ingresos por sí solo.** El dinero aparece cuando se acumulan las condiciones de la plataforma (para YouTube Shorts, 1.000 suscriptores y 10 millones de Shorts vistos en 90 días).
+- Con un solo vídeo al día, llegar a ese umbral tarda meses. Lo que acelera la facturación no es el vídeo, es el nicho, el número de canales y las plataformas.
+- YouTube desmonetiza el contenido repetitivo generado en masa. Por eso el sistema lleva registro de temas y te avisa cuando solo tienes un fondo: publicar lo mismo con otro título no cuenta como contenido nuevo.
+
+```bash
+npm run doctor   # comprueba claves, fondos, plataformas y permisos antes de la primera publicación
+```
+
+## Puesta en marcha
+
+1. Copia y rellena las tres claves marcadas `TODO` en `.env`:
+   `OPENAI_API_KEY`, `ELEVENLABS_API_KEY` y `ELEVENLABS_VOICE_ID`.
+2. Comprueba que todo responde: `npm run doctor`.
+3. Genera un Short de prueba sin publicar: `npm run generate-now`.
+   Revísalo en `output/<timestamp>/short.mp4`. **Míralo antes de seguir.**
+4. Autoriza YouTube: `npm run youtube:auth` y pega el `YOUTUBE_REFRESH_TOKEN`.
+5. Pon `DRY_RUN=false` cuando confíes en lo que genera, y lanza el proceso
+   permanente: `npm start` o `docker compose up -d`.
+
+### Los fondos vienen incluidos
+
+`assets/backgrounds/` trae seis clips abstractos generados con FFmpeg
+(`npm run backgrounds:generate`). Son originales y no tienen problemas de
+derechos, pero son un punto de partida, no material de archivo. Sustitúyelos
+por b-roll vertical con licencia en cuanto puedas: es lo que más retiene y lo
+que separa un canal que crece de uno que se queda en 200 vistas.
 
 ## Consideraciones operativas
 
-- `node-cron` programa dentro del proceso; no ofrece garantias exactly-once. Esta base evita solapamientos locales, pero no coordina varias copias del servicio. Para varias replicas usa un orquestador de trabajos o un coordinador externo.
+- `node-cron` programa dentro del proceso; no ofrece garantías exactly-once. Esta base evita solapamientos locales, pero no coordina varias copias del servicio. Para varias réplicas usa un orquestador de trabajos o un coordinador externo.
+- El proceso debe seguir vivo a la hora del cron. `npm start` en primer plano no sobrevive a un reinicio del equipo: para producción usa `docker compose up -d`, que ya viene con `restart: unless-stopped`.
 - YouTube puede limitar la subida de proyectos OAuth no verificados. Revisa las cuotas y la situacion de verificacion de tu proyecto.
 - Usa solo fondos, musica y recursos con licencia. Los Shorts reutilizables siguen sujetos a copyright, aunque el canal sea faceless.
 - Revisa las obligaciones de divulgacion de contenido sintetico o generado con IA aplicables a tu cuenta y localization.

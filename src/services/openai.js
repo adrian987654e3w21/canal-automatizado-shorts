@@ -5,6 +5,10 @@ const OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    topic: {
+      type: 'string',
+      description: 'Tema de tres a seis palabras en minusculas, sin acentos. Se usa para no repetir contenido.',
+    },
     title: {
       type: 'string',
       description: 'Titulo curto y preciso para YouTube, de 45 a 90 caracteres.',
@@ -23,7 +27,7 @@ const OUTPUT_SCHEMA = {
       description: 'Texto completo que sera narrado, sin acotaciones ni formato Markdown.',
     },
   },
-  required: ['title', 'description', 'tags', 'script'],
+  required: ['topic', 'title', 'description', 'tags', 'script'],
 };
 
 class ContentValidationError extends Error {}
@@ -58,6 +62,7 @@ function normalizeContent(raw) {
     });
 
   return {
+    topic: String(raw.topic ?? '').replace(/\s+/g, ' ').trim().toLowerCase(),
     title: String(raw.title ?? '').replace(/\s+/g, ' ').trim(),
     description: String(raw.description ?? '').trim(),
     tags,
@@ -76,6 +81,9 @@ function validateContent(content) {
   }
   if (!content.title || content.title.length > 100) {
     throw new ContentValidationError('El titulo debe tener entre 1 y 100 caracteres.');
+  }
+  if (content.topic.length < 3) {
+    throw new ContentValidationError('El tema debe tener al menos 3 caracteres.');
   }
   if (content.description.length < 80 || content.description.length > 5000) {
     throw new ContentValidationError('La descripcion debe tener entre 80 y 5000 caracteres.');
@@ -102,6 +110,7 @@ function createUserPrompt(recentTitles, feedback) {
   return [
     `Crea una publicacion nueva para hoy sobre ${config.content.niche}.`,
     'Elige un angulo concreto, evergreen y que pueda explicarse bien con un fondo generico, sin depender de imagenes concretas.',
+    'El tema debe ser sustancialmente distinto al de los anteriores: no basta con cambiar el titulo.',
     previous,
     correction,
   ].join('\n');

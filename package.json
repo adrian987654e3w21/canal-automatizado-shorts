@@ -11,6 +11,8 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "generate-now": "node index.js --now",
+    "doctor": "node scripts/doctor.js",
+    "backgrounds:generate": "node scripts/generate-backgrounds.js",
     "youtube:auth": "node scripts/get-youtube-token.js",
     "background:demo": "node scripts/create-demo-background.js",
     "test": "node --test",
