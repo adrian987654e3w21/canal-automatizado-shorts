@@ -87,9 +87,14 @@ jobs:
       - name: 🔧 Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates libespeak-ng1 python3-pip
-          # Piper TTS via pip (rhasspy binary repo fue archivado en oct 2025)
-          pip install piper-tts --quiet
+          sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates libespeak-ng1
+          # Piper TTS binary (rhasspy, releases aún disponibles aunque repo archivado)
+          PIPER_VERSION="2023.11.14-2"
+          curl -fsSL "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
+            | tar -xz -C /tmp
+          sudo cp /tmp/piper/piper /usr/local/bin/piper
+          sudo chmod +x /usr/local/bin/piper
+          piper --version || echo "Piper instalado"
       
       # 4. Descargar modelo Piper (voz español) - cacheado
       - name: 🎙️ Download Piper voice model
