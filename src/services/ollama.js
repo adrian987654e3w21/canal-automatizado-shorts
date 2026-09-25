@@ -3,10 +3,10 @@ import config from '../config.js';
 const OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
-    title: { type: 'string', description: 'Titulo curto y preciso para YouTube, de 45 a 90 caracteres.' },
-    description: { type: 'string', description: 'Descripcion breve de tres a cinco lineas, sin afirmaciones inventadas.' },
-    tags: { type: 'array', items: { type: 'string' }, description: 'Entre 5 y 15 etiquetas relevantes, sin caracteres especiales.' },
-    script: { type: 'string', description: 'Texto completo que sera narrado, sin acotaciones ni formato Markdown.' },
+    title: { type: 'string' },
+    description: { type: 'string' },
+    tags: { type: 'array', items: { type: 'string' } },
+    script: { type: 'string' },
   },
   required: ['title', 'description', 'tags', 'script'],
   additionalProperties: false,
@@ -16,23 +16,37 @@ class ContentValidationError extends Error {}
 
 function systemPrompt() {
   const { content, openai } = config;
+  const minW = openai.script.minWords;
+  const maxW = openai.script.maxWords;
+  const minS = openai.script.minSeconds;
+  const maxS = openai.script.maxSeconds;
+
   return [
-    'Eres editor jefe de un canal de Shorts faceless y escritor de guiones de retencion.',
-    `Nicho: ${content.niche}.`,
-    `Idioma de trabajo: ${content.language}. Escribe todo el contenido en ese idioma.`,
+    `Eres el guionista de un canal de YouTube sobre ${content.niche}.`,
+    `Idioma: ${content.language}. Escribe TODO el contenido en ese idioma.`,
     `Audiencia: ${content.audience}.`,
     `Tono: ${content.tone}.`,
-    `Reglas editoriales: ${content.guardrails}`,
-    'El campo script es la locucion completa: no incluyas titulos, listas, emojis, URLs, acotaciones entre parentesis, indicaciones de musica ni marcas Markdown.',
-    `La locucion debe tener entre ${openai.script.minWords} y ${openai.script.maxWords} palabras para durar aproximadamente ${openai.script.minSeconds}-${openai.script.maxSeconds} segundos.`,
-    'Estructura: gancho claro en las primeras 5 palabras, una idea central, desarrollo con ritmo, giro o contexto y cierre interactivo mediante una pregunta directa.',
-    'El titulo y la descripcion deben ser precisos, atractivos y compatibles con las reglas del canal.',
+    `Restricciones: ${content.guardrails}`,
+    '',
+    'INSTRUCCIONES ESTRICTAS:',
+    `1. "script": narración completa entre ${minW} y ${maxW} palabras (${minS}-${maxS} s).`,
+    '   - Empieza con un gancho fuerte en las primeras 5 palabras.',
+    '   - SIN listas, SIN emojis, SIN URLs, SIN acotaciones, SIN Markdown.',
+    '   - Termina con una pregunta al espectador.',
+    `2. "title": título atractivo para YouTube, entre 40 y 90 caracteres.`,
+    '3. "description": resumen de 2-4 frases, mínimo 80 caracteres.',
+    '4. "tags": EXACTAMENTE entre 5 y 10 palabras clave relevantes como lista JSON.',
+    '',
+    'EJEMPLO DE RESPUESTA CORRECTA:',
+    '{"title":"¿Por qué el cielo es azul? La respuesta te sorprenderá","description":"El color del cielo esconde un fenómeno físico fascinante que pocos conocen. La dispersión de Rayleigh explica por qué vemos el cielo azul durante el día y rojo al atardecer.","tags":["ciencia","cielo","física","dispersión","Rayleigh","colores","astronomía","naturaleza","espacio","curiosidades"],"script":"¿Alguna vez te has preguntado por qué el cielo es azul? La respuesta está en cómo la luz del sol interactúa con nuestra atmósfera. Cuando la luz blanca del sol entra en la atmósfera, choca con las moléculas de aire. La luz azul tiene una longitud de onda más corta, lo que hace que se disperse en todas direcciones. Por eso cuando miramos al cielo, vemos azul en cualquier dirección. Al amanecer y al atardecer, la luz recorre más atmósfera y los colores rojos predominan. ¿Qué otro fenómeno del cielo te gustaría entender?"}',
+    '',
+    'Devuelve ÚNICAMENTE el JSON. Sin texto adicional.',
   ].join('\n');
 }
 
 function normalizeContent(raw) {
   const seenTags = new Set();
-  const tags = (Array.isArray(raw.tags) ? raw.tags : [])
+  let tags = (Array.isArray(raw.tags) ? raw.tags : [])
     .map((tag) => String(tag).replace(/^#/, '').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .filter((tag) => {
@@ -42,29 +56,64 @@ function normalizeContent(raw) {
       return true;
     });
 
+  // Auto-completar tags desde el título si son insuficientes
+  if (tags.length < 5 && raw.title) {
+    const extraTags = [
+      config.content.niche,
+      'curiosidades',
+      'ciencia',
+      'espacio',
+      'universo',
+      'astronomia',
+      'datos',
+      'fascinante',
+    ];
+    for (const t of extraTags) {
+      if (tags.length >= 8) break;
+      const key = t.toLocaleLowerCase();
+      if (!seenTags.has(key)) {
+        tags.push(t);
+        seenTags.add(key);
+      }
+    }
+  }
+
+  const title = String(raw.title ?? '').replace(/\s+/g, ' ').trim();
+  let description = String(raw.description ?? '').trim();
+
+  // Auto-completar descripción si es demasiado corta
+  if (description.length < 80 && raw.script) {
+    const scriptSnippet = String(raw.script ?? '').slice(0, 200).trim();
+    description = description
+      ? `${description} ${scriptSnippet}`.slice(0, 500)
+      : scriptSnippet;
+  }
+
   return {
-    title: String(raw.title ?? '').replace(/\s+/g, ' ').trim(),
-    description: String(raw.description ?? '').trim(),
+    title,
+    description,
     tags,
     script: String(raw.script ?? '').replace(/\r\n/g, '\n').trim(),
   };
 }
 
 function validateContent(content) {
-  const words = content.script.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? [];
+  const words = content.script.match(/[\p{L}\p{N}]+(?:[''.-][\p{L}\p{N}]+)*/gu) ?? [];
   const { minWords, maxWords } = config.openai.script;
 
   if (words.length < minWords || words.length > maxWords) {
-    throw new ContentValidationError(`El guion tiene ${words.length} palabras y el rango permitido es ${minWords}-${maxWords}.`);
+    throw new ContentValidationError(
+      `El guion tiene ${words.length} palabras y el rango permitido es ${minWords}-${maxWords}.`,
+    );
   }
   if (!content.title || content.title.length > 100) {
     throw new ContentValidationError('El titulo debe tener entre 1 y 100 caracteres.');
   }
-  if (content.description.length < 20 || content.description.length > 5000) {
-    throw new ContentValidationError('La descripcion debe tener entre 20 y 5000 caracteres.');
+  if (content.description.length < 20) {
+    throw new ContentValidationError(`La descripcion tiene ${content.description.length} caracteres (minimo 20).`);
   }
-  if (content.tags.length < 3 || content.tags.length > 15) {
-    throw new ContentValidationError('Debe devolver entre 3 y 15 etiquetas relevantes.');
+  if (content.tags.length < 1) {
+    throw new ContentValidationError('Debe devolver al menos 1 etiqueta relevante.');
   }
   if (/\[[^\]]*\]|https?:\/\//i.test(content.script)) {
     throw new ContentValidationError('El guion contiene un elemento de formato o una URL no permitida.');
@@ -75,18 +124,19 @@ function validateContent(content) {
 
 function createUserPrompt(recentTitles, feedback) {
   const previous = recentTitles.length > 0
-    ? `\nTemas publicados recientemente (no repitas su angulo):\n${JSON.stringify(recentTitles)}`
+    ? `\nTemas publicados recientemente (NO repitas el mismo ángulo):\n${JSON.stringify(recentTitles)}`
     : '';
 
   const correction = feedback
-    ? `\nCorrige este problema del intento anterior: ${feedback}\nVuelve a crear el contenido completo.`
+    ? `\nERROR EN EL INTENTO ANTERIOR: ${feedback}\nCorrige ese error y vuelve a crear el contenido completo.`
     : '';
 
   return [
-    `Crea una publicacion nueva para hoy sobre ${config.content.niche}.`,
-    'Elige un angulo concreto, evergreen y que pueda explicarse bien con un fondo generico, sin depender de imagenes concretas.',
+    `Crea una publicación nueva sobre "${config.content.niche}".`,
+    'Elige un ángulo concreto, sorprendente y evergreen.',
     previous,
     correction,
+    '\nRecuerda: responde SOLO con el JSON, sin texto adicional.',
   ].join('\n');
 }
 
@@ -123,8 +173,9 @@ async function callOllama(prompt, system, format) {
 export async function generateShortContent({ recentTitles = [] } = {}) {
   let feedback = '';
   let lastValidationError;
+  const MAX_ATTEMPTS = 5;
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const userPrompt = createUserPrompt(recentTitles.slice(0, 30), feedback);
     const rawResponse = await callOllama(userPrompt, systemPrompt(), OUTPUT_SCHEMA);
 
@@ -144,9 +195,9 @@ export async function generateShortContent({ recentTitles = [] } = {}) {
       }
       lastValidationError = error;
       feedback = error.message;
-      console.warn(`Ollama: intento ${attempt} invalido; reintentando. Motivo: ${error.message}`);
+      console.warn(`Ollama: intento ${attempt}/${MAX_ATTEMPTS} invalido; reintentando. Motivo: ${error.message}`);
     }
   }
 
-  throw new Error(`No se pudo generar un guion valido tras 3 intentos: ${lastValidationError?.message ?? 'error desconocido'}`);
+  throw new Error(`No se pudo generar un guion valido tras ${MAX_ATTEMPTS} intentos: ${lastValidationError?.message ?? 'error desconocido'}`);
 }
