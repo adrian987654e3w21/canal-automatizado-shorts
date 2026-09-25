@@ -1,0 +1,25 @@
+# ============================================================
+# .dockerignore - Archivos excluidos del build Docker
+# ============================================================
+node_modules
+npm-debug.log*
+.env
+.env.*
+!.env.example
+output/*
+!output/.gitkeep
+.git
+.gitignore
+README.md
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-entrypoint.sh
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db
+test/*
+coverage
+.nyc_output
