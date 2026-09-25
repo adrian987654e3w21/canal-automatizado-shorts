@@ -225,4 +225,8 @@ if (missing.length > 0) {
   throw new Error(`Faltan variables o recursos obligatorios en .env:\n- ${missing.join('\n- ')}`);
 }
 
+// Shortcuts para retrocompatibilidad con los servicios (ollama.js, piper.js)
+config.ollama = config.localAI.ollama;
+config.piper = config.localAI.piper;
+
 export default config;
