@@ -133,7 +133,7 @@ const config = {
       maxDurationSeconds: number('SUBTITLE_MAX_DURATION_SECONDS', 3.2, { min: 1, max: 8 }),
       maxWords: integer('SUBTITLE_MAX_WORDS', 8, { min: 2, max: 16 }),
       font: optional('SUBTITLE_FONT', 'Arial'),
-      fontSize: number('SUBTITLE_FONT_SIZE', 18, { min: 8, max: 40 }),
+      fontSize: number('SUBTITLE_FONT_SIZE', 18, { min: 8, max: 120 }),
       outline: number('SUBTITLE_OUTLINE', 4, { min: 0, max: 12 }),
       marginV: integer('SUBTITLE_MARGIN_V', 220, { min: 0, max: 1000 }),
     },
