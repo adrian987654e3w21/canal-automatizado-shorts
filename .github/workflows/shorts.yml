@@ -127,8 +127,9 @@ jobs:
           MIN_SCRIPT_SECONDS=${{ env.MIN_SCRIPT_SECONDS }}
           MAX_SCRIPT_SECONDS=${{ env.MAX_SCRIPT_SECONDS }}
           USE_LOCAL_AI=${{ env.USE_LOCAL_AI }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL=${{ env.OPENAI_MODEL }}
+          OPENAI_API_KEY=
+          GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL=llama-3.3-70b-versatile
           ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID=${{ secrets.ELEVENLABS_VOICE_ID }}
           ELEVENLABS_MODEL_ID=${{ env.ELEVENLABS_MODEL_ID }}

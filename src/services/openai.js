@@ -1,4 +1,4 @@
-﻿import OpenAI from 'openai';
+import OpenAI from 'openai';
 import config from '../config.js';
 
 const OUTPUT_SCHEMA = {
@@ -117,38 +117,45 @@ function createUserPrompt(recentTitles, feedback) {
 }
 
 export async function generateShortContent({ recentTitles = [] } = {}) {
-  const client = new OpenAI({ apiKey: config.openai.apiKey });
+  let client;
+  let modelToUse;
+
+  if (config.groq.apiKey) {
+    client = new OpenAI({ apiKey: config.groq.apiKey, baseURL: 'https://api.groq.com/openai/v1' });
+    modelToUse = config.groq.model;
+    console.log(`Usando Groq con modelo ${modelToUse}`);
+  } else if (config.openai.apiKey) {
+    client = new OpenAI({ apiKey: config.openai.apiKey, baseURL: config.openai.baseUrl });
+    modelToUse = config.openai.model;
+    console.log(`Usando OpenAI con modelo ${modelToUse}`);
+  } else {
+    throw new Error('No hay API key configurada para Groq ni para OpenAI.');
+  }
+
   let feedback = '';
   let lastValidationError;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const response = await client.responses.create({
-      model: config.openai.model,
-      store: false,
-      max_output_tokens: 1800,
-      input: [
+    const response = await client.chat.completions.create({
+      model: modelToUse,
+      messages: [
         { role: 'system', content: systemPrompt() },
         {
           role: 'user',
           content: createUserPrompt(recentTitles.slice(0, 30), feedback),
         },
       ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'faceless_short',
-          strict: true,
-          schema: OUTPUT_SCHEMA,
-        },
-      },
+      response_format: { type: 'json_object' },
     });
 
-    if (response.status !== 'completed' || !response.output_text) {
-      throw new Error(`OpenAI no devolvio una respuesta completa (estado: ${response.status ?? 'desconocido'}).`);
+    if (!response.choices || !response.choices[0] || !response.choices[0].message || !response.choices[0].message.content) {
+      throw new Error(`La API no devolvio una respuesta completa.`);
     }
 
+    const outputText = response.choices[0].message.content;
+
     try {
-      const content = normalizeContent(JSON.parse(response.output_text));
+      const content = normalizeContent(JSON.parse(outputText));
       const wordCount = validateContent(content);
 
       return {

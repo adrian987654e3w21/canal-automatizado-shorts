@@ -95,7 +95,8 @@ const config = {
     ),
   },
   openai: {
-    apiKey: useLocalAI ? optional('OPENAI_API_KEY') : required('OPENAI_API_KEY'),
+    apiKey: useLocalAI ? optional('OPENAI_API_KEY') : optional('OPENAI_API_KEY'),
+    baseUrl: optional('OPENAI_BASE_URL'),
     model: optional('OPENAI_MODEL', 'gpt-4o'),
     script: {
       minWords: minScriptWords,
@@ -103,6 +104,10 @@ const config = {
       minSeconds: minScriptSeconds,
       maxSeconds: maxScriptSeconds,
     },
+  },
+  groq: {
+    apiKey: optional('GROQ_API_KEY'),
+    model: optional('GROQ_MODEL', 'llama-3.3-70b-versatile'),
   },
   elevenlabs: {
     apiKey: useLocalAI ? optional('ELEVENLABS_API_KEY') : required('ELEVENLABS_API_KEY'),
