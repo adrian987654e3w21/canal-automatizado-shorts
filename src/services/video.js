@@ -57,14 +57,27 @@ export async function renderShortVideo({ backgroundFile, audioFile, subtitleFile
 
   const { width, height, fps, crf, preset } = config.media.video;
   const subtitleStyle = config.media.subtitles;
+
+  // Subtítulos: amarillo brillante, contorno negro grueso, sombra — máxima legibilidad
+  const subtitleForceStyle = [
+    `FontName=${subtitleStyle.font}`,
+    `FontSize=${subtitleStyle.fontSize}`,
+    `PrimaryColour=&H0000FFFF`,
+    `OutlineColour=&H00000000`,
+    `BackColour=&H80000000`,
+    `BorderStyle=1`,
+    `Outline=${subtitleStyle.outline}`,
+    `Shadow=3`,
+    `Bold=1`,
+    `Italic=0`,
+    `Alignment=2`,
+    `MarginV=${subtitleStyle.marginV}`,
+  ].join(',');
+
   const filter = [
     `[0:v:0]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
       `crop=${width}:${height},setsar=1,format=yuv420p,` +
-      `subtitles=filename='${escapeFilterPath(subtitleFile)}':force_style='` +
-      `FontName=${subtitleStyle.font},FontSize=${subtitleStyle.fontSize},` +
-      `PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,` +
-      `Outline=${subtitleStyle.outline},Shadow=1,Bold=1,Alignment=2,` +
-      `MarginV=${subtitleStyle.marginV}'[v]`,
+      `subtitles=filename='${escapeFilterPath(subtitleFile)}':force_style='${subtitleForceStyle}'[v]`,
     '[1:a:0]aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a]',
   ].join(';');
 

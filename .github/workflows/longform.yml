@@ -1,113 +1,98 @@
-name: 🎬 Daily Short Generator
+name: 🎬 Long-Form Video Generator
 
 on:
   schedule:
-    # Cada día a las 10:00 UTC (cambia cron si quieres otra hora)
-    - cron: '0 10 * * *'
-  workflow_dispatch:  # Botón "Run workflow" en GitHub
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/shorts.yml'
-      - 'src/**'
-      - 'scripts/**'
-      - 'package*.json'
+    # Lunes, miércoles y viernes a las 12:00 UTC
+    - cron: '0 12 * * 1,3,5'
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
 env:
-  # === CONFIGURACIÓN CANAL (cambia aquí o usa secrets) ===
+  # === CONFIGURACIÓN CANAL ===
   CONTENT_NICHE: curiosidades del espacio
   CONTENT_LANGUAGE: es-ES
   TARGET_AUDIENCE: adultos curiosos de 18 a 34 años
-  TONE: curioso, claro, energético y creíble
-  CONTENT_GUARDRAILS: No inventes cifras, citas ni hechos; evita engaños y clickbait. No incluyas acotaciones, emojis, URLs ni hashtags dentro del guion.
-  
-  # === GUION ===
-  SCRIPT_MIN_WORDS: 40
-  SCRIPT_MAX_WORDS: 110
-  MIN_SCRIPT_SECONDS: 10
-  MAX_SCRIPT_SECONDS: 60
+  TONE: apasionado, cercano, didáctico y sorprendente
+  CONTENT_GUARDRAILS: No inventes cifras ni hechos; evita clickbait. Basa el contenido en ciencia real. No incluyas acotaciones ni formato Markdown en el guion.
 
-  # === MODO LOCAL GRATIS (Ollama + Piper) ===
+  # === GUION LARGO (5-10 min ≈ 700-1400 palabras) ===
+  SCRIPT_MIN_WORDS: 500
+  SCRIPT_MAX_WORDS: 900
+  MIN_SCRIPT_SECONDS: 200
+  MAX_SCRIPT_SECONDS: 600
+
+  # === IA LOCAL ===
   USE_LOCAL_AI: true
   OLLAMA_MODEL: llama3.1:8b
-  OLLAMA_TEMPERATURE: 0.7
-  OLLAMA_MAX_TOKENS: 2500
+  OLLAMA_TEMPERATURE: 0.75
+  OLLAMA_MAX_TOKENS: 6000
   PIPER_MODEL: /home/runner/voices/es_ES-sharvard-medium.onnx
   PIPER_LENGTH_SCALE: 1.0
   PIPER_NOISE_SCALE: 0.667
   PIPER_NOISE_W: 0.8
   PIPER_SAMPLE_RATE: 22050
-  
-  # === VIDEO ===
-  VIDEO_WIDTH: 1080
-  VIDEO_HEIGHT: 1920
+
+  # === VIDEO HORIZONTAL 1080p ===
+  VIDEO_WIDTH: 1920
+  VIDEO_HEIGHT: 1080
   VIDEO_FPS: 30
   VIDEO_CRF: 18
   VIDEO_PRESET: medium
-  SUBTITLE_MAX_CHARACTERS: 35
-  SUBTITLE_MAX_DURATION_SECONDS: 3.0
-  SUBTITLE_MAX_WORDS: 6
+  SUBTITLE_MAX_CHARACTERS: 60
+  SUBTITLE_MAX_DURATION_SECONDS: 4.0
+  SUBTITLE_MAX_WORDS: 10
   SUBTITLE_FONT: Arial
-  SUBTITLE_FONT_SIZE: 52
-  SUBTITLE_OUTLINE: 6
-  SUBTITLE_MARGIN_V: 180
-  
-  # === YOUTUBE (se inyectan desde secrets) ===
+  SUBTITLE_FONT_SIZE: 36
+  SUBTITLE_OUTLINE: 5
+  SUBTITLE_MARGIN_V: 80
+
+  # === YOUTUBE ===
   DRY_RUN: false
   YOUTUBE_PRIVACY: unlisted
   YOUTUBE_CATEGORY_ID: 27
-  YOUTUBE_DEFAULT_TAGS: shorts,curiosidades,espacio
+  YOUTUBE_DEFAULT_TAGS: curiosidades,espacio,ciencia,astronomia,universo
   YOUTUBE_DESCRIPTION_FOOTER: Contenido generado con asistencia de inteligencia artificial.
   YOUTUBE_MADE_FOR_KIDS: false
   YOUTUBE_EMBEDDABLE: true
 
 jobs:
-  generate-short:
-    name: Generate & Upload Short
+  generate-longform:
+    name: Generate & Upload Long-Form Video
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
+    timeout-minutes: 60
+
     steps:
-      # 1. Checkout código
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-      
-      # 2. Setup Node.js
+
       - name: 🟢 Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-      
-      # 3. Instalar dependencias del sistema (ffmpeg, piper)
+
       - name: 🔧 Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates libespeak-ng1
-          # Piper TTS - extraer binario + librerías compartidas
           PIPER_VERSION="2023.11.14-2"
           sudo mkdir -p /opt/piper
           curl -fsSL "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
             | sudo tar -xz -C /opt/piper --strip-components=1
           sudo chmod +x /opt/piper/piper
           sudo ln -sf /opt/piper/piper /usr/local/bin/piper
-          # Copiar librerías al path del sistema
           sudo cp /opt/piper/*.so* /usr/local/lib/ 2>/dev/null || true
           sudo ldconfig
-          piper --version || echo "Piper instalado en /opt/piper"
-      
-      # 4. Descargar modelo Piper (voz español) - cacheado
+
       - name: 🎙️ Download Piper voice model
+        id: piper-cache
         uses: actions/cache@v4
         with:
           path: /home/runner/voices
           key: piper-voice-es-${{ runner.os }}-v1
-          restore-keys: |
-            piper-voice-es-${{ runner.os }}-
       - name: 📥 Ensure Piper model exists
         if: steps.piper-cache.outputs.cache-hit != 'true'
         run: |
@@ -117,48 +102,42 @@ jobs:
             "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx"
           curl -fL -o es_ES-sharvard-medium.onnx.json \
             "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json"
-      
-      # 5. Instalar y arrancar Ollama
+
       - name: 🦙 Setup Ollama
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
-          # Esperar a que Ollama responda
           for i in {1..30}; do
             if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          # Descargar modelo LLM
           ollama pull ${{ env.OLLAMA_MODEL }}
-      
-      # 6. Generar fondo de video (cacheado)
+
       - name: 🎨 Generate background video
-        id: bg-cache
+        id: bg-cache-lf
         uses: actions/cache@v4
         with:
-          path: /home/runner/backgrounds
-          key: background-video-${{ runner.os }}-v3
+          path: /home/runner/backgrounds-lf
+          key: background-longform-${{ runner.os }}-v1
       - name: 🎬 Ensure background exists
-        if: steps.bg-cache.outputs.cache-hit != 'true'
+        if: steps.bg-cache-lf.outputs.cache-hit != 'true'
         run: |
-          mkdir -p /home/runner/backgrounds
-          # Fondo espacial animado: estrellas parpadeantes sobre fondo negro-azul profundo
+          mkdir -p /home/runner/backgrounds-lf
+          # Fondo espacial horizontal con estrellas y tonos azul/morado
           ffmpeg -y -f lavfi \
-            -i "color=c=black:s=1080x1920:r=30" \
+            -i "color=c=black:s=1920x1080:r=30" \
             -vf "
-              geq=lum='if(lt(random(X+Y*1080)*random(X*1920+Y)*random(1+X+Y),0.00015),255*random(2+X*Y),0)':cb=128:cr=128,
+              geq=lum='if(lt(random(X+Y*1920)*random(X*1080+Y)*random(1+X+Y),0.00018),255*random(2+X*Y),0)':cb=128:cr=128,
               gblur=sigma=0.4,
               curves=r='0/0 0.3/0.08 1/0.25':g='0/0 0.3/0.1 1/0.35':b='0/0 0.3/0.35 1/0.85',
               format=yuv420p
             " \
             -t 60 -an -c:v libx264 -preset veryfast -crf 20 -movflags +faststart \
-            /home/runner/backgrounds/default.mp4
-      
-      # 7. Instalar dependencias Node
+            /home/runner/backgrounds-lf/default.mp4
+
       - name: 📦 Install Node dependencies
         run: npm ci
-      
-      # 8. Inyectar secrets de YouTube en .env
+
       - name: 🔐 Prepare environment
         run: |
           cat > .env <<'EOF'
@@ -203,29 +182,23 @@ jobs:
           YOUTUBE_CLIENT_SECRET=${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN=${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           YOUTUBE_REDIRECT_URI=http://localhost:3000/oauth2/callback
-          BACKGROUND_FILE=/home/runner/backgrounds/default.mp4
+          BACKGROUND_FILE=/home/runner/backgrounds-lf/default.mp4
           OUTPUT_DIR=output
           EOF
-      
-      # 9. Generar y subir Short
-      - name: 🚀 Generate & Upload Short
+
+      - name: 🚀 Generate & Upload Long-Form Video
         run: node index.js --now
         env:
-          # GitHub Actions no soporta cron timezone, usamos UTC
           CRON_TIMEZONE: UTC
-      
-      # 10. Subir artefactos (MP4, logs) como artifacts de GitHub
+
       - name: 📦 Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: short-output-${{ github.run_id }}
+          name: longform-output-${{ github.run_id }}
           path: output/**/*
           retention-days: 30
-      
-      # 11. Notificar si falla (opcional: añade webhook Discord/Slack)
+
       - name: ❌ Notify on failure
         if: failure()
-        run: |
-          echo "::error::Short generation failed. Check workflow logs."
-          # Aquí podrías añadir: curl -X POST $DISCORD_WEBHOOK ...
+        run: echo "::error::Long-form video generation failed. Check workflow logs."
