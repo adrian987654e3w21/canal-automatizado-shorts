@@ -63,6 +63,7 @@ function fromRoot(value) {
 }
 
 const dryRun = boolean('DRY_RUN', true);
+const useLocalAI = boolean('USE_LOCAL_AI', false);
 const minScriptSeconds = number('MIN_SCRIPT_SECONDS', 45, { min: 10, max: 180 });
 const maxScriptSeconds = number('MAX_SCRIPT_SECONDS', 60, { min: 10, max: 180 });
 const minScriptWords = integer('SCRIPT_MIN_WORDS', 120, { min: 20, max: 500 });
@@ -92,7 +93,7 @@ const config = {
     ),
   },
   openai: {
-    apiKey: required('OPENAI_API_KEY'),
+    apiKey: useLocalAI ? optional('OPENAI_API_KEY') : required('OPENAI_API_KEY'),
     model: optional('OPENAI_MODEL', 'gpt-4o'),
     script: {
       minWords: minScriptWords,
@@ -102,8 +103,8 @@ const config = {
     },
   },
   elevenlabs: {
-    apiKey: required('ELEVENLABS_API_KEY'),
-    voiceId: required('ELEVENLABS_VOICE_ID'),
+    apiKey: useLocalAI ? optional('ELEVENLABS_API_KEY') : required('ELEVENLABS_API_KEY'),
+    voiceId: useLocalAI ? optional('ELEVENLABS_VOICE_ID') : required('ELEVENLABS_VOICE_ID'),
     modelId: optional('ELEVENLABS_MODEL_ID', 'eleven_multilingual_v2'),
     apiBaseUrl: optional('ELEVENLABS_API_BASE_URL', 'https://api.elevenlabs.io').replace(/\/+$/, ''),
     outputFormat: optional('ELEVENLABS_OUTPUT_FORMAT', 'mp3_44100_128'),
