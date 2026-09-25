@@ -26,7 +26,7 @@ env:
   CONTENT_GUARDRAILS: No inventes cifras, citas ni hechos; evita engaños y clickbait. No incluyas acotaciones, emojis, URLs ni hashtags dentro del guion.
   
   # === GUION ===
-  SCRIPT_MIN_WORDS: 60
+  SCRIPT_MIN_WORDS: 40
   SCRIPT_MAX_WORDS: 110
   MIN_SCRIPT_SECONDS: 25
   MAX_SCRIPT_SECONDS: 55

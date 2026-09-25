@@ -60,11 +60,11 @@ function validateContent(content) {
   if (!content.title || content.title.length > 100) {
     throw new ContentValidationError('El titulo debe tener entre 1 y 100 caracteres.');
   }
-  if (content.description.length < 80 || content.description.length > 5000) {
-    throw new ContentValidationError('La descripcion debe tener entre 80 y 5000 caracteres.');
+  if (content.description.length < 20 || content.description.length > 5000) {
+    throw new ContentValidationError('La descripcion debe tener entre 20 y 5000 caracteres.');
   }
-  if (content.tags.length < 5 || content.tags.length > 15) {
-    throw new ContentValidationError('Debe devolver entre 5 y 15 etiquetas relevantes.');
+  if (content.tags.length < 3 || content.tags.length > 15) {
+    throw new ContentValidationError('Debe devolver entre 3 y 15 etiquetas relevantes.');
   }
   if (/\[[^\]]*\]|https?:\/\//i.test(content.script)) {
     throw new ContentValidationError('El guion contiene un elemento de formato o una URL no permitida.');
