@@ -28,8 +28,8 @@ env:
   # === GUION ===
   SCRIPT_MIN_WORDS: 40
   SCRIPT_MAX_WORDS: 110
-  MIN_SCRIPT_SECONDS: 25
-  MAX_SCRIPT_SECONDS: 55
+  MIN_SCRIPT_SECONDS: 10
+  MAX_SCRIPT_SECONDS: 60
 
   # === MODO LOCAL GRATIS (Ollama + Piper) ===
   USE_LOCAL_AI: true
@@ -88,13 +88,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg curl ca-certificates libespeak-ng1
-          # Piper TTS binary (rhasspy, releases aún disponibles aunque repo archivado)
+          # Piper TTS - extraer binario + librerías compartidas
           PIPER_VERSION="2023.11.14-2"
+          sudo mkdir -p /opt/piper
           curl -fsSL "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
-            | tar -xz -C /tmp
-          sudo cp /tmp/piper/piper /usr/local/bin/piper
-          sudo chmod +x /usr/local/bin/piper
-          piper --version || echo "Piper instalado"
+            | sudo tar -xz -C /opt/piper --strip-components=1
+          sudo chmod +x /opt/piper/piper
+          sudo ln -sf /opt/piper/piper /usr/local/bin/piper
+          # Copiar librerías al path del sistema
+          sudo cp /opt/piper/*.so* /usr/local/lib/ 2>/dev/null || true
+          sudo ldconfig
+          piper --version || echo "Piper instalado en /opt/piper"
       
       # 4. Descargar modelo Piper (voz español) - cacheado
       - name: 🎙️ Download Piper voice model
